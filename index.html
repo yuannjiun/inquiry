@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>個人作業與成績查詢系統</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    h2 { text-align: center; color: #2c3e50; margin-bottom: 20px; }
+    .form-group { margin-bottom: 18px; }
+    label { display: block; margin-bottom: 6px; font-weight: bold; color: #34495e; }
+    input[type="text"], input[type="password"], select { 
+      width: 100%; padding: 12px; border: 1px solid #ced4da; border-radius: 6px; box-sizing: border-box; font-size: 15px; 
+    }
+    button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    button:hover { background-color: #0056b3; }
+    #loading { display: none; text-align: center; margin-top: 15px; color: #007bff; font-weight: bold; }
+    #resultArea { margin-top: 20px; display: none; }
+    .user-card { background: #eef2f7; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 15px; color: #2c3e50; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; }
+    th, td { border: 1px solid #dee2e6; padding: 12px; text-align: left; }
+    th { background-color: #f8f9fa; color: #495057; font-weight: bold; }
+    .badge-ok { color: #28a745; font-weight: bold; }
+    .badge-wait { color: #dc3545; font-weight: bold; }
+    .error { color: #dc3545; text-align: center; margin-top: 10px; font-weight: bold; word-break: break-all; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>個人作業與成績查詢系統</h2>
+  
+  <div id="loginForm">
+    <div class="form-group">
+      <label for="account">帳號：</label>
+      <input type="text" id="account" placeholder="請輸入帳號">
+    </div>
+    <div class="form-group">
+      <label for="password">密碼：</label>
+      <input type="password" id="password" placeholder="請輸入密碼">
+    </div>
+    <button onclick="handleQuery()">登入查詢</button>
+  </div>
+
+  <div id="loading">資料讀取中，請稍候...</div>
+  <div id="msg" class="error"></div>
+
+  <div id="resultArea">
+    <div class="user-card" id="userInfo"></div>
+    
+    <div class="form-group">
+      <label for="subjectSelect">請選擇查詢科目：</label>
+      <select id="subjectSelect" onchange="renderDetails()">
+        <option value="">-- 請選擇科目 --</option>
+      </select>
+    </div>
+
+    <div id="detailContainer" style="display:none;">
+      <h3 id="selectedSubjectTitle" style="color:#007bff; margin-top:20px;"></h3>
+      <table>
+        <thead>
+          <tr>
+            <th>作業 / 評量項目</th>
+            <th>繳交狀態 / 分數</th>
+          </tr>
+        </thead>
+        <tbody id="detailTableBody"></tbody>
+      </table>
+    </div>
+
+    <button onclick="resetForm()" style="margin-top:25px; background-color:#6c757d;">登出 / 重新查詢</button>
+  </div>
+</div>
+
+<script>
+  // 帶入您提供之 Deployment ID 組成完整的 API URL
+  var GAS_API_URL = "https://script.google.com/macros/s/AKfycbzgKvkT64azsTafZbMpEPEad6mtUTjTRg_i3453TZaCTbbBT0MfgXYraIo4L3-gub4-/exec";
+
+  var globalSubjects = [];
+
+  function cleanGasUrl(url) {
+    if (!url) return "";
+    var cleaned = url.trim().replace(/\/u\/\d+\//, '/');
+    return cleaned;
+  }
+
+  function handleQuery() {
+    var acc = document.getElementById('account').value.trim();
+    var pwd = document.getElementById('password').value.trim();
+    var msgDiv = document.getElementById('msg');
+    
+    if (!acc || !pwd) {
+      msgDiv.innerText = '請輸入帳號與密碼！';
+      return;
+    }
+    
+    msgDiv.innerText = '';
+    document.getElementById('loading').style.display = 'block';
+    
+    var targetUrl = cleanGasUrl(GAS_API_URL);
+
+    fetch(targetUrl, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "text/plain;charset=utf-8" 
+      },
+      body: JSON.stringify({ account: acc, password: pwd })
+    })
+    .then(function(res) {
+      return res.json();
+    })
+    .then(function(response) {
+      document.getElementById('loading').style.display = 'none';
+      if (!response.success) {
+        msgDiv.innerText = response.message;
+        return;
+      }
+      
+      globalSubjects = response.subjects || [];
+      document.getElementById('loginForm').style.display = 'none';
+      document.getElementById('resultArea').style.display = 'block';
+      
+      var u = response.user;
+      document.getElementById('userInfo').innerHTML = `
+        <strong>班級：</strong> ${u.className} &nbsp;|&nbsp; 
+        <strong>座號：</strong> ${u.seatNo} &nbsp;|&nbsp; 
+        <strong>姓名：</strong> ${u.name}
+      `;
+      
+      var select = document.getElementById('subjectSelect');
+      select.innerHTML = '<option value="">-- 請選擇科目 --</option>';
+      globalSubjects.forEach(function(sub, idx) {
+        var opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = sub.title;
+        select.appendChild(opt);
+      });
+      
+      document.getElementById('detailContainer').style.display = 'none';
+    })
+    .catch(function(error) {
+      document.getElementById('loading').style.display = 'none';
+      msgDiv.innerText = '連線失敗：' + error.message;
+    });
+  }
+
+  function renderDetails() {
+    var idx = document.getElementById('subjectSelect').value;
+    var container = document.getElementById('detailContainer');
+    var tbody = document.getElementById('detailTableBody');
+    
+    if (idx === '') {
+      container.style.display = 'none';
+      return;
+    }
+    
+    var selectedSubject = globalSubjects[idx];
+    document.getElementById('selectedSubjectTitle').innerText = selectedSubject.title;
+    
+    tbody.innerHTML = '';
+    if (selectedSubject.items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">此科目暫無作業/評量項目資料</td></tr>';
+    } else {
+      selectedSubject.items.forEach(function(item) {
+        var tr = document.createElement('tr');
+        var statusClass = '';
+        if (item.status === '已交') statusClass = 'class="badge-ok"';
+        else if (item.status === '待補交' || item.status === '待補考') statusClass = 'class="badge-wait"';
+        
+        tr.innerHTML = `
+          <td>${item.itemName}</td>
+          <td ${statusClass}>${item.status}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    container.style.display = 'block';
+  }
+
+  function resetForm() {
+    document.getElementById('loginForm').style.display = 'block';
+    document.getElementById('resultArea').style.display = 'none';
+    document.getElementById('account').value = '';
+    document.getElementById('password').value = '';
+    document.getElementById('msg').innerText = '';
+    globalSubjects = [];
+  }
+</script>
+
+</body>
+</html>
