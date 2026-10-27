@@ -5,8 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>個人作業與成績查詢系統</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-</head>
   <style>
+    /* ==========================================
+       📱 手機與行動裝置專屬 RWD 優化 (螢幕寬度 < 768px)
+       ========================================== */
+    @media (max-width: 768px) {
+      body { margin: 10px; }
+      .container { padding: 15px 10px; }
+
+      h2 { font-size: 1.25rem; margin-top: 35px; }
+      .top-switch-btn { top: 10px; right: 10px; padding: 6px 10px; font-size: 12px; }
+
+      .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+      .toolbar input, .toolbar select, .toolbar button { width: 100% !important; box-sizing: border-box; }
+      .table-nav { justify-content: space-between; width: 100%; box-sizing: border-box; }
+
+      th, td { padding: 6px 4px; font-size: 13px; }
+      select.status-select { padding: 8px 4px; font-size: 13.5px; max-width: 110px; }
+
+      .modal-content { width: 95% !important; padding: 18px; max-height: 90vh; }
+      .sub-tab-btn { padding: 8px 12px; font-size: 13px; flex: 1; text-align: center; }
+    }
+
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 20px; background-color: #f4f6f9; color: #333; }
     .container { max-width: 1150px; margin: 0 auto; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; }
     h2 { text-align: center; color: #2c3e50; margin-bottom: 20px; }
@@ -17,7 +37,7 @@
     .login-box { max-width: 400px; margin: 40px auto; }
     .form-group { margin-bottom: 18px; }
     label { display: block; margin-bottom: 6px; font-weight: bold; color: #34495e; }
-    input[type="text"], input[type="password"], select { 
+    input[type="text"], input[type="password"], input[type="number"], select { 
       width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 6px; box-sizing: border-box; font-size: 15px; 
     }
     button { padding: 10px 18px; background-color: #007bff; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; }
@@ -28,7 +48,10 @@
     button.btn-secondary:hover { background-color: #5a6268; }
     button.btn-success { background-color: #28a745; }
     button.btn-success:hover { background-color: #218838; }
-    button.btn-sm { padding: 4px 8px; font-size: 12px; border-radius: 4px; margin-left: 5px; }
+    button.btn-warning { background-color: #ff9800; color: white; }
+    button.btn-warning:hover { background-color: #e08600; }
+    
+    button.btn-sm { padding: 4px 6px; font-size: 12px; border-radius: 4px; margin-left: 2px; }
 
     #loading { display: none; text-align: center; margin: 15px 0; color: #007bff; font-weight: bold; }
     .error { color: #dc3545; text-align: center; margin-top: 10px; font-weight: bold; word-break: break-all; }
@@ -48,16 +71,10 @@
     th, td { border: 1px solid #dee2e6; padding: 10px; text-align: center; white-space: nowrap; }
     th { background-color: #f8f9fa; color: #495057; font-weight: bold; }
     
+    .header-btn-group { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+
     .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
-    .modal-content { 
-      background: #fff; 
-      padding: 25px; 
-      border-radius: 8px; 
-      width: 400px; 
-      max-width: 90%; 
-      max-height: 85vh; 
-      overflow-y: auto; 
-    }
+    .modal-content { background: #fff; padding: 25px; border-radius: 8px; width: 400px; max-width: 90%; max-height: 85vh; overflow-y: auto; }
     
     select.status-select { padding: 5px; border-radius: 4px; font-weight: bold; }
     .badge-ok { color: #28a745; font-weight: bold; }
@@ -141,7 +158,8 @@
           </div>
         </div>
 
-       <div style="display:flex; gap:10px;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button style="background-color: #ff9800;" onclick="sendBatchOverdueEmail()">📧 催繳全科未交/缺交同學</button>
           <button class="btn-success" onclick="openAddColumnModal()">+ 新增作業項目(欄位)</button>
           <button id="exportExcelBtn" style="background-color: #17a2b8; display: none;" onclick="exportToExcel()">📥 匯出全班 Excel 備份</button>
         </div>
@@ -154,21 +172,20 @@
         </table>
       </div>
     </div>
+
     <!-- Modal 3: Excel 匯出進度條 -->
-<div id="progressModal" class="modal">
-  <div class="modal-content" style="text-align: center; padding: 30px;">
-    <h3 style="margin-top:0;">📊 正在匯出 Excel 備份...</h3>
-    <p id="progressStatusText" style="color: #555; font-size: 14px; margin-bottom: 15px;">準備中...</p>
-    
-    <!-- 外框進度條 -->
-    <div style="width: 100%; background-color: #e9ecef; border-radius: 10px; overflow: hidden; height: 22px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);">
-      <!-- 內部進度填充條 -->
-      <div id="progressBarFill" style="width: 0%; height: 100%; background-color: #17a2b8; transition: width 0.3s ease; text-align: center; color: white; font-size: 12px; line-height: 22px; font-weight: bold;">
-        0%
+    <div id="progressModal" class="modal">
+      <div class="modal-content" style="text-align: center; padding: 30px;">
+        <h3 style="margin-top:0;">📊 正在匯出 Excel 備份...</h3>
+        <p id="progressStatusText" style="color: #555; font-size: 14px; margin-bottom: 15px;">準備中...</p>
+        
+        <div style="width: 100%; background-color: #e9ecef; border-radius: 10px; overflow: hidden; height: 22px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);">
+          <div id="progressBarFill" style="width: 0%; height: 100%; background-color: #17a2b8; transition: width 0.3s ease; text-align: center; color: white; font-size: 12px; line-height: 22px; font-weight: bold;">
+            0%
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-</div>
 
     <!-- 權限管理 (只限 Admin 管理員) -->
     <div id="adminUserSection" style="display:none;">
@@ -180,19 +197,33 @@
         <table>
           <thead>
             <tr>
-              <th>班級</th><th>座號</th><th>姓名</th><th>帳號</th><th>密碼</th><th>系統權限</th><th>小老師負責科目</th><th>操作</th>
+              <th>班級</th><th>座號</th><th>姓名</th><th>帳號</th><th>密碼</th><th>系統權限</th><th>小老師負責科目</th><th>Email</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="userTableBody"></tbody>
         </table>
       </div>
 
-      <!-- 管理員專用：系統班級抬頭設定區塊 -->
+      <!-- 管理員專用：系統班級與自動催繳設定區塊 -->
       <div class="config-box">
-        <h4 style="margin-top:0; color:#2c3e50;">系統全域班級名稱設定</h4>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <input type="text" id="sysClassNameInput" placeholder="例如：8B班" style="width:250px;">
-          <button class="btn-success" onclick="saveSysClassName()">更新網站班級抬頭</button>
+        <h4 style="margin-top:0; color:#2c3e50;">系統全域與自動催繳設定</h4>
+        
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom: 15px; flex-wrap: wrap;">
+          <label style="margin:0; min-width: 150px;">全域班級抬頭：</label>
+          <input type="text" id="sysClassNameInput" placeholder="例如：8B" style="width:200px;">
+          <button class="btn-success" onclick="saveSysClassName()">更新抬頭</button>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom: 15px; flex-wrap: wrap;">
+          <label style="margin:0; min-width: 150px;">Email 催繳功能：</label>
+          <button id="emailToggleBtn" class="btn-success" onclick="toggleEmailStatus()">📧 Email 催繳功能：已開啟</button>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+          <label style="margin:0; min-width: 150px;">未交/缺交催繳時數門檻：</label>
+          <input type="number" id="overdueHoursInput" placeholder="預設為 2 (小時)" step="0.1" min="0.01" style="width:150px;">
+          <button style="background-color: #17a2b8;" onclick="saveOverdueHours()">更新時數</button>
+          <button style="background-color: #ff9800;" onclick="triggerOverdueCheck()">🚀 立即執行未交/缺交逾時檢查寄信</button>
         </div>
       </div>
     </div>
@@ -225,7 +256,8 @@
     <div class="form-group"><label>座號：</label><input type="text" id="uSeat" placeholder="例如：1"></div>
     <div class="form-group"><label>姓名：</label><input type="text" id="uName" placeholder="例如：吳禹衡"></div>
     <div class="form-group"><label>帳號：</label><input type="text" id="uAcc" placeholder="例如：142201"></div>
-    <div class="form-group"><label>密碼：</label><input type="text" id="uPwd" placeholder="例如：11119399"></div>
+    <div class="form-group"><label>密碼：</label><input type="text" id="uPwd" placeholder="例如：142201"></div>
+    <div class="form-group"><label>Email 信箱：</label><input type="text" id="uEmail" placeholder="例如：s142201@gmail.com"></div>
     <div class="form-group">
       <label>設定身分與權限：</label>
       <select id="uRole" onchange="toggleSubjectAuthField()">
@@ -235,8 +267,8 @@
       </select>
     </div>
     <div class="form-group" id="subjectAuthGroup" style="display:none;">
-      <label>指派小老師負責之工作表代碼（例如: 評量1）：</label>
-      <input type="text" id="uSubjectAuth" placeholder="請填寫工作表代碼，如 評量1">
+      <label>指派小老師負責之工作表代碼（多個科目請用逗號分隔）：</label>
+      <input type="text" id="uSubjectAuth" placeholder="例如：評量1, 評量2, 評量5">
     </div>
     <div style="margin-top:15px; text-align:right;">
       <button class="btn-secondary" onclick="closeModal('userModal')">取消</button>
@@ -246,7 +278,7 @@
 </div>
 
 <script>
-  var GAS_API_URL = "https://script.google.com/macros/s/AKfycbxv9kO61b9yiniDA9t5decWisNW3ZpGYGPoKMfdJ5VlodLtTYXfYv041i4P6oUbqtky/exec";
+  var GAS_API_URL = "https://script.google.com/macros/s/AKfycbxdPEQWRX3blz11X-6i7AUm-KrLz1flDv88tFdK_zII1q9S3aNlyKQM8BgxqWBhp054/exec";
 
   var currentUser = null;
   var globalSubjects = [];
@@ -255,6 +287,7 @@
 
   var isAssistantInAdminView = false;
   var globalSysClassName = "";
+  var currentEmailEnabled = true;
 
   var currentPage = 0;
   var itemsPerPage = 2;
@@ -288,26 +321,39 @@
   }
 
   window.onload = function() {
-    fetchWithRetry(cleanGasUrl(GAS_API_URL), {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "get_sys_config" }),
-      redirect: "follow"
-    })
-    .then(res => {
-      if (res && res.success && res.className) {
-        updateTitleHeader(res.className);
-      }
-    }).catch(err => console.log(err));
+    var apiUrl = cleanGasUrl(GAS_API_URL);
+    if (!apiUrl) return;
+
+    fetch(apiUrl, { method: "GET" })
+      .then(res => res.json())
+      .then(res => {
+        if (res && res.className) {
+          updateTitleHeader(res.className);
+        }
+      })
+      .catch(err => console.error("GET 預載抬頭失敗：", err));
   };
 
   function updateTitleHeader(className) {
     globalSysClassName = className || "";
     var baseTitle = "個人作業與成績查詢系統";
-    if (globalSysClassName) {
-      document.getElementById('systemTitle').innerText = baseTitle + " - " + globalSysClassName;
+    var titleEl = document.getElementById('systemTitle');
+    if (titleEl) {
+      titleEl.innerText = globalSysClassName ? baseTitle + " - " + globalSysClassName : baseTitle;
+    }
+  }
+
+  function updateEmailToggleUI(isEnabled) {
+    currentEmailEnabled = isEnabled;
+    var btn = document.getElementById('emailToggleBtn');
+    if (!btn) return;
+
+    if (currentEmailEnabled) {
+      btn.innerText = "📧 Email 催繳功能：已開啟";
+      btn.style.backgroundColor = "#28a745";
     } else {
-      document.getElementById('systemTitle').innerText = baseTitle;
+      btn.innerText = "🚫 Email 催繳功能：已關閉";
+      btn.style.backgroundColor = "#dc3545";
     }
   }
 
@@ -349,12 +395,12 @@
         opt.textContent = sub.title;
         select.appendChild(opt);
       });
-      // 📌 登入時清空上一次的查詢結果
+
       select.value = ""; 
       document.getElementById('studentDetailContainer').style.display = 'none';
       document.getElementById('studentDetailTableBody').innerHTML = '';
 
-     if (currentUser.role === 'assistant') {
+      if (currentUser.role === 'assistant') {
         var btn = document.getElementById('switchModeBtn');
         btn.style.display = 'block';
         btn.innerText = "進入小老師專區";
@@ -363,8 +409,6 @@
         document.getElementById('studentView').style.display = 'block';
         document.getElementById('adminView').style.display = 'none';
         document.getElementById('userTabBtn').style.display = 'none';
-        
-        // ❌ 小老師隱藏匯出按鈕
         document.getElementById('exportExcelBtn').style.display = 'none';
 
         loadAdminData();
@@ -372,8 +416,6 @@
         document.getElementById('adminView').style.display = 'block';
         document.getElementById('studentView').style.display = 'none';
         document.getElementById('userTabBtn').style.display = 'inline-block';
-        
-        // ⭕ 最高管理者顯示匯出按鈕
         document.getElementById('exportExcelBtn').style.display = 'inline-block';
 
         switchAdminTab('homework');
@@ -425,7 +467,7 @@
         var tr = document.createElement('tr');
         var statusClass = '';
         if (item.status === '已交') statusClass = 'class="badge-ok"';
-        else if (['待補交', '待補考', '未交', '缺交'].includes(item.status)) statusClass = 'class="badge-wait"';
+        else if (['待補交', '待補考', '未交', '缺交', '遲交'].includes(item.status)) statusClass = 'class="badge-wait"';
         else if (item.status === '未紀錄') statusClass = 'class="badge-none"';
         
         tr.innerHTML = `
@@ -437,8 +479,7 @@
     }
     container.style.display = 'block';
   }
-  // 匯出全班資料為 Excel 檔案
- // 匯出全班資料為 Excel 檔案 (含進度條)
+
   async function exportToExcel() {
     if (!adminData.subjects || adminData.subjects.length === 0) {
       alert("尚無科目資料可供匯出！");
@@ -449,7 +490,6 @@
     var statusText = document.getElementById('progressStatusText');
     var barFill = document.getElementById('progressBarFill');
 
-    // 1. 初始化並顯示進度條視窗
     barFill.style.width = '0%';
     barFill.innerText = '0%';
     statusText.innerText = '正在初始化資料...';
@@ -457,10 +497,9 @@
 
     try {
       var wb = XLSX.utils.book_new();
-      var totalSteps = adminData.subjects.length + 1; // 學生名冊 + 各科數量
+      var totalSteps = adminData.subjects.length + 1;
       var currentStep = 0;
 
-      // 更新進度條 UI 畫面
       function updateProgress(step, message) {
         var percent = Math.round((step / totalSteps) * 100);
         barFill.style.width = percent + '%';
@@ -468,7 +507,6 @@
         statusText.innerText = message;
       }
 
-      // 2. 匯出「學生名冊」頁籤
       currentStep++;
       updateProgress(currentStep, "正在處理：學生名冊...");
       if (adminData.users && adminData.users.length > 0) {
@@ -478,13 +516,13 @@
           '姓名': u.name,
           '帳號': u.account,
           '身份權限': u.role,
-          '負責科目': u.subjectAuth || ''
+          '負責科目': u.subjectAuth || '',
+          'Email': u.email || ''
         }));
         var wsUsers = XLSX.utils.json_to_sheet(userRows);
         XLSX.utils.book_append_sheet(wb, wsUsers, "學生名冊");
       }
 
-      // 3. 逐一讀取各科作業表格並建立頁籤
       for (var sub of adminData.subjects) {
         currentStep++;
         updateProgress(currentStep, `正在讀取科目：${sub.title || sub.sheetName}...`);
@@ -522,7 +560,6 @@
         }
       }
 
-      // 4. 下載檔案並關閉視窗
       statusText.innerText = '打包 Excel 檔案中...';
       var fileName = `${globalSysClassName || '班級'}_作業與成績留檔_${new Date().toISOString().slice(0,10)}.xlsx`;
       XLSX.writeFile(wb, fileName);
@@ -538,13 +575,12 @@
     }
   }
 
- function logout() {
+  function logout() {
     document.getElementById('loginSection').style.display = 'block';
     document.getElementById('studentView').style.display = 'none';
     document.getElementById('adminView').style.display = 'none';
     document.getElementById('switchModeBtn').style.display = 'none';
     
-    // 📌 清空學生查詢介面舊資料
     document.getElementById('subjectSelect').value = "";
     document.getElementById('studentDetailContainer').style.display = 'none';
     document.getElementById('studentDetailTableBody').innerHTML = '';
@@ -557,7 +593,7 @@
     updateTitleHeader(globalSysClassName);
   }
 
- function loadAdminData() {
+  function loadAdminData() {
     showLoading(true);
     fetchWithRetry(cleanGasUrl(GAS_API_URL), {
       method: "POST",
@@ -574,6 +610,12 @@
         updateTitleHeader(res.sysClassName);
         document.getElementById('sysClassNameInput').value = res.sysClassName;
       }
+      if (res.overdueHours) {
+        document.getElementById('overdueHoursInput').value = res.overdueHours;
+      }
+      if (res.emailEnabled !== undefined) {
+        updateEmailToggleUI(res.emailEnabled);
+      }
 
       var select = document.getElementById('adminSubjectSelect');
       select.innerHTML = '<option value="">-- 請選擇科目 --</option>';
@@ -584,7 +626,6 @@
         select.appendChild(opt);
       });
 
-      // 📌 核心修正：進入後台時強制清空選擇與表格畫面
       select.value = "";
       currentSheetName = "";
       fullHwDetails = null;
@@ -603,7 +644,7 @@
   function loadAdminHomeworkData() {
     var sheetName = document.getElementById('adminSubjectSelect').value;
     currentSheetName = sheetName;
-    currentPage = 0;
+    currentPage = -1;
 
     var thead = document.getElementById('hwThead');
     var tbody = document.getElementById('hwTbody');
@@ -611,7 +652,6 @@
     tbody.innerHTML = '';
     document.getElementById('pageNavContainer').style.display = 'none';
 
-    // 📌 核心修正：如果選回預設的「-- 請選擇科目 --」，歸零儲存資料並直接結束
     if (!sheetName) {
       fullHwDetails = null;
       return;
@@ -633,6 +673,7 @@
     });
   }
 
+  // 渲染作業管理表格 (修正 DOM 節點事件綁定與按鈕群組)
   function renderHomeworkTable() {
     if (!fullHwDetails) return;
 
@@ -649,7 +690,10 @@
     }
 
     var totalPages = Math.ceil(totalHwColumns / itemsPerPage);
-    if (currentPage >= totalPages) currentPage = totalPages - 1;
+    
+    if (currentPage === -1 || currentPage >= totalPages) {
+      currentPage = totalPages - 1;
+    }
     if (currentPage < 0) currentPage = 0;
 
     var startIdx = currentPage * itemsPerPage;
@@ -666,10 +710,43 @@
       var hwTitle = fullHwDetails.headers[i + 2];
       
       var th = document.createElement('th');
-      th.innerHTML = `
-        ${hwTitle} 
-        <button class="btn-danger btn-sm" onclick="deleteHomeworkColumn(${realColIndex}, '${hwTitle}')" title="刪除此作業">✕</button>
-      `;
+      var titleSpan = document.createElement('span');
+      titleSpan.innerText = hwTitle + " ";
+
+      var btnGroup = document.createElement('span');
+      btnGroup.className = 'header-btn-group';
+
+      // ✏️ 修改按鈕
+      var btnEdit = document.createElement('button');
+      btnEdit.className = 'btn-secondary btn-sm';
+      btnEdit.title = '修改作業名稱';
+      btnEdit.innerText = '✏️';
+
+      // 📧 單項催繳按鈕
+      var btnMail = document.createElement('button');
+      btnMail.className = 'btn-warning btn-sm';
+      btnMail.title = '寄信催繳此作業未交/缺交同學';
+      btnMail.innerText = '📧';
+
+      // ✕ 刪除按鈕
+      var btnDel = document.createElement('button');
+      btnDel.className = 'btn-danger btn-sm';
+      btnDel.title = '刪除此作業欄位';
+      btnDel.innerText = '✕';
+
+      // 使用閉包綁定獨立事件，避免動態 String 轉義失效
+      (function(colIdx, title) {
+        btnEdit.onclick = function() { renameHomeworkColumn(colIdx, title); };
+        btnMail.onclick = function() { sendSingleHomeworkEmail(colIdx, title); };
+        btnDel.onclick = function() { deleteHomeworkColumn(colIdx, title); };
+      })(realColIndex, hwTitle);
+
+      btnGroup.appendChild(btnEdit);
+      btnGroup.appendChild(btnMail);
+      btnGroup.appendChild(btnDel);
+
+      th.appendChild(titleSpan);
+      th.appendChild(btnGroup);
       trHead.appendChild(th);
     }
     thead.appendChild(trHead);
@@ -686,15 +763,12 @@
         var select = document.createElement('select');
         select.className = 'status-select';
         
-        // 預設預設選項 + 「其他 (自訂)」
         var defaultOptions = ['', '已交', '未交', '遲交', '缺交', '請假', '免繳'];
-        
-        // 若現有狀態不在預設陣列內，動態放入陣列以便正確呈現
         var optionsToRender = [...defaultOptions];
         if (status && !optionsToRender.includes(status)) {
           optionsToRender.push(status);
         }
-        optionsToRender.push('__OTHER__'); // 代表手動輸入選項
+        optionsToRender.push('__OTHER__');
 
         optionsToRender.forEach(optVal => {
           var opt = document.createElement('option');
@@ -711,30 +785,28 @@
         });
 
         (function(seat, name, colIdx, currentVal, hwIndex) {
-  select.onchange = function() {
-    var selectedVal = this.value;
-    
-    if (selectedVal === '__OTHER__') {
-      var customVal = prompt(`請輸入 ${name} 的自訂狀態或分數：`, currentVal || "");
-      if (customVal === null) {
-        this.value = currentVal;
-        return;
-      }
-      selectedVal = customVal.trim();
+          select.onchange = function() {
+            var selectedVal = this.value;
+            
+            if (selectedVal === '__OTHER__') {
+              var customVal = prompt(`請輸入 ${name} 的自訂狀態或分數：`, currentVal || "");
+              if (customVal === null) {
+                this.value = currentVal;
+                return;
+              }
+              selectedVal = customVal.trim();
 
-      var newOpt = document.createElement('option');
-      newOpt.value = selectedVal;
-      newOpt.textContent = selectedVal === '' ? '-- (空白) --' : selectedVal;
-      newOpt.selected = true;
-      this.insertBefore(newOpt, this.lastElementChild);
-    }
+              var newOpt = document.createElement('option');
+              newOpt.value = selectedVal;
+              newOpt.textContent = selectedVal === '' ? '-- (空白) --' : selectedVal;
+              newOpt.selected = true;
+              this.insertBefore(newOpt, this.lastElementChild);
+            }
 
-    // 📌 核心修正：同步更新本地前端記憶體資料，換頁時才不會被舊資料蓋掉
-    r.statuses[hwIndex] = selectedVal;
-
-    updateHomeworkStatus(seat, name, colIdx, selectedVal);
-  };
-})(r.seatNo, r.name, realColIndex, status, i);
+            r.statuses[hwIndex] = selectedVal;
+            updateHomeworkStatus(seat, name, colIdx, selectedVal);
+          };
+        })(r.seatNo, r.name, realColIndex, status, i);
 
         td.appendChild(select);
         tr.appendChild(td);
@@ -772,40 +844,145 @@
     })
     .then(res => {
       showLoading(false);
-      if (res.success) {
+      if (res && res.success) {
         loadAdminHomeworkData();
       } else {
-        alert("刪除失敗：" + res.message);
+        alert("刪除失敗：" + (res ? res.message : "未知錯誤"));
       }
     });
   }
 
-  function updateHomeworkStatus(seatNo, name, colIndex, statusValue) {
-  fetch(cleanGasUrl(GAS_API_URL), {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({
-      action: "admin_update_homework_status",
-      adminAccount: currentUser.account,
-      sheetName: currentSheetName,
-      seatNo: seatNo,
-      name: name,
-      colIndex: colIndex,
-      statusValue: statusValue
-    }),
-    redirect: "follow"
-  })
-  .then(res => res.json())
-  .then(res => {
-    if (!res.success) {
-      alert(`⚠️ [${name}] 的狀態更新失敗：${res.message}`);
-      loadAdminHomeworkData(); // 寫入失敗時才向伺服器重新抓資料校正
+  function renameHomeworkColumn(colIndex, currentTitle) {
+    if (!currentSheetName) {
+      alert("請先選擇科目！");
+      return;
     }
-  })
-  .catch(err => {
-    console.error("寫入錯誤", err);
-  });
-}
+
+    var newTitle = prompt("請輸入作業「" + currentTitle + "」的新名稱：", currentTitle);
+    
+    if (newTitle === null) return;
+    newTitle = newTitle.trim();
+    
+    if (!newTitle) {
+      alert("作業名稱不能為空！");
+      return;
+    }
+    
+    if (newTitle === currentTitle) return;
+
+    showLoading(true);
+    fetchWithRetry(cleanGasUrl(GAS_API_URL), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "admin_rename_homework_column",
+        adminAccount: currentUser.account,
+        sheetName: currentSheetName,
+        colIndex: colIndex,
+        newTitle: newTitle
+      }),
+      redirect: "follow"
+    })
+    .then(function(res) {
+      showLoading(false);
+      if (res && res.success) {
+        if (fullHwDetails && fullHwDetails.headers) {
+          fullHwDetails.headers[colIndex - 1] = newTitle;
+        }
+        renderHomeworkTable();
+      } else {
+        alert("修改失敗：" + (res ? res.message : "未知錯誤"));
+      }
+    })
+    .catch(function(err) {
+      showLoading(false);
+      console.error("修改作業名稱發生錯誤：", err);
+      alert("連線失敗：" + err.message);
+    });
+  }
+
+  // 📧 單項作業催繳 Email
+  function sendSingleHomeworkEmail(colIndex, hwTitle) {
+    if (!currentSheetName) return alert("請先選擇科目！");
+    if (!confirm(`確定要立刻寄信催繳「${hwTitle}」未交/缺交的同學嗎？`)) return;
+
+    showLoading(true);
+    fetchWithRetry(cleanGasUrl(GAS_API_URL), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "admin_send_single_homework_email",
+        adminAccount: currentUser.account,
+        sheetName: currentSheetName,
+        colIndex: colIndex,
+        hwTitle: hwTitle
+      }),
+      redirect: "follow"
+    })
+    .then(res => {
+      showLoading(false);
+      if (res && res.success) alert("🎉 " + res.message);
+      else alert("催繳失敗：" + (res ? res.message : "未知錯誤"));
+    })
+    .catch(err => {
+      showLoading(false);
+      alert("連線失敗：" + err.message);
+    });
+  }
+
+  // 📧 全科一鍵催繳 Email
+  function sendBatchOverdueEmail() {
+    if (!currentSheetName) return alert("請先選擇科目！");
+    if (!confirm(`確定要一次寄發 Email 催繳【${currentSheetName}】所有未交與缺交作業的同學嗎？`)) return;
+
+    showLoading(true);
+    fetchWithRetry(cleanGasUrl(GAS_API_URL), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "admin_send_batch_overdue_email",
+        adminAccount: currentUser.account,
+        sheetName: currentSheetName
+      }),
+      redirect: "follow"
+    })
+    .then(res => {
+      showLoading(false);
+      if (res && res.success) alert("🎉 " + res.message);
+      else alert("催繳失敗：" + (res ? res.message : "未知錯誤"));
+    })
+    .catch(err => {
+      showLoading(false);
+      alert("連線失敗：" + err.message);
+    });
+  }
+
+  function updateHomeworkStatus(seatNo, name, colIndex, statusValue) {
+    fetch(cleanGasUrl(GAS_API_URL), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "admin_update_homework_status",
+        adminAccount: currentUser.account,
+        sheetName: currentSheetName,
+        seatNo: seatNo,
+        name: name,
+        colIndex: colIndex,
+        statusValue: statusValue
+      }),
+      redirect: "follow"
+    })
+    .then(res => res.json())
+    .then(res => {
+      if (!res.success) {
+        alert(`⚠️ [${name}] 的狀態更新失敗：${res.message}`);
+        loadAdminHomeworkData();
+      }
+    })
+    .catch(err => {
+      console.error("寫入錯誤", err);
+    });
+  }
 
   function addHomeworkColumn() {
     var title = document.getElementById('newHomeworkTitle').value.trim();
@@ -826,12 +1003,12 @@
     })
     .then(res => {
       showLoading(false);
-      if (res.success) {
+      if (res && res.success) {
         closeModal('columnModal');
         document.getElementById('newHomeworkTitle').value = '';
         loadAdminHomeworkData();
       } else {
-        alert("新增欄位失敗：" + res.message);
+        alert("新增欄位失敗：" + (res ? res.message : "未知錯誤"));
       }
     });
   }
@@ -852,12 +1029,88 @@
     })
     .then(res => {
       showLoading(false);
-      if (res.success) {
+      if (res && res.success) {
         alert(res.message);
         updateTitleHeader(res.sysClassName);
       } else {
-        alert("更新失敗：" + res.message);
+        alert("更新失敗：" + (res ? res.message : "未知錯誤"));
       }
+    });
+  }
+
+  function toggleEmailStatus() {
+    var targetStatus = !currentEmailEnabled;
+    var confirmMsg = targetStatus 
+      ? "確定要【開啟】Email 自動催繳功能嗎？" 
+      : "確定要【關閉】Email 自動催繳功能嗎？（關閉後系統將暫停發送所有催繳信件）";
+
+    if (!confirm(confirmMsg)) return;
+
+    showLoading(true);
+    fetchWithRetry(cleanGasUrl(GAS_API_URL), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "admin_set_email_enabled",
+        adminAccount: currentUser.account,
+        emailEnabled: targetStatus
+      }),
+      redirect: "follow"
+    })
+    .then(function(res) {
+      showLoading(false);
+      if (res && res.success) {
+        updateEmailToggleUI(targetStatus);
+        alert(res.message);
+      } else {
+        alert("設定失敗：" + (res ? res.message : "未知錯誤"));
+      }
+    })
+    .catch(function(err) {
+      showLoading(false);
+      alert("連線失敗：" + err.message);
+    });
+  }
+
+  function saveOverdueHours() {
+    var hours = document.getElementById('overdueHoursInput').value.trim();
+    if (!hours) return alert("請輸入小時數！");
+
+    showLoading(true);
+    fetchWithRetry(cleanGasUrl(GAS_API_URL), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "admin_set_overdue_hours",
+        adminAccount: currentUser.account,
+        overdueHours: hours
+      }),
+      redirect: "follow"
+    })
+    .then(res => {
+      showLoading(false);
+      if (res && res.success) alert(res.message);
+      else alert("設定失敗：" + (res ? res.message : "未知錯誤"));
+    });
+  }
+
+  function triggerOverdueCheck() {
+    if (!confirm("確定要立即發動全系統未交/缺交逾時檢查並寄信嗎？")) return;
+
+    showLoading(true);
+    fetchWithRetry(cleanGasUrl(GAS_API_URL), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "admin_trigger_overdue_check",
+        adminAccount: currentUser.account
+      }),
+      redirect: "follow"
+    })
+    .then(res => {
+      showLoading(false);
+      if (res && res.success) alert("🎉 " + res.message);
+      else alert("執行失敗：" + (res ? res.message : "未知錯誤"));
     });
   }
 
@@ -881,6 +1134,7 @@
         <td>${u.password}</td>
         <td>${roleText}</td>
         <td>${u.subjectAuth || '-'}</td>
+        <td>${u.email || '-'}</td>
         <td>
           <button onclick='editUser(${JSON.stringify(u)})'>編輯權限</button>
           <button class="btn-danger" onclick='deleteUser("${u.account}")'>刪除</button>
@@ -899,7 +1153,8 @@
       account: document.getElementById('uAcc').value,
       password: document.getElementById('uPwd').value,
       role: document.getElementById('uRole').value,
-      subjectAuth: document.getElementById('uSubjectAuth').value
+      subjectAuth: document.getElementById('uSubjectAuth').value,
+      email: document.getElementById('uEmail').value
     };
 
     showLoading(true);
@@ -911,11 +1166,11 @@
     })
     .then(res => {
       showLoading(false);
-      if (res.success) {
+      if (res && res.success) {
         closeModal('userModal');
         loadAdminData();
       } else {
-        alert("儲存失敗：" + res.message);
+        alert("儲存失敗：" + (res ? res.message : "未知錯誤"));
       }
     });
   }
@@ -932,10 +1187,10 @@
     })
     .then(res => {
       showLoading(false);
-      if (res.success) {
+      if (res && res.success) {
         loadAdminData();
       } else {
-        alert("刪除失敗：" + res.message);
+        alert("刪除失敗：" + (res ? res.message : "未知錯誤"));
       }
     });
   }
@@ -960,6 +1215,7 @@
     document.getElementById('uPwd').value = "";
     document.getElementById('uRole').value = "student";
     document.getElementById('uSubjectAuth').value = "";
+    document.getElementById('uEmail').value = "";
     toggleSubjectAuthField();
     document.getElementById('userModal').style.display = 'flex';
   }
@@ -975,6 +1231,7 @@
     document.getElementById('uPwd').value = u.password;
     document.getElementById('uRole').value = u.role || "student";
     document.getElementById('uSubjectAuth').value = u.subjectAuth || "";
+    document.getElementById('uEmail').value = u.email || "";
     toggleSubjectAuthField();
   }
 
